@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.vitest/
+.vscode/
+
+.env
+.env.*
+!.env.example
+
+*.log
+.npm-cache/
+.cache/
+artifacts/

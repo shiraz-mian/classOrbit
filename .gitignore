@@ -23,3 +23,7 @@ Desktop.ini
 *.pfx
 *.tmp
 *.bak
+dist-ssr/
+.vitest/
+.cache/
+artifacts/

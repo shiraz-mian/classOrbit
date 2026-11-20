@@ -1,18 +1,24 @@
 name: ClassOrbit checks
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: classorbit
     env:
       DATABASE_URL: postgresql://classorbit:classorbit@localhost:5432/classorbit
       DIRECT_URL: postgresql://classorbit:classorbit@localhost:5432/classorbit
-      DEMO_MODE: 'true'
+      DEMO_MODE: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: classorbit/package-lock.json
       - run: npm ci
       - run: npm run db:generate
       - run: npx prisma validate --schema server/prisma/schema.prisma
