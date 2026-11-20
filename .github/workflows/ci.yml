@@ -1,0 +1,20 @@
+name: ClassOrbit checks
+on: [push, pull_request]
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://classorbit:classorbit@localhost:5432/classorbit
+      DIRECT_URL: postgresql://classorbit:classorbit@localhost:5432/classorbit
+      DEMO_MODE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npx prisma validate --schema server/prisma/schema.prisma
+      - run: npm test
+      - run: npm run build

@@ -1,0 +1,344 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "ClassOrbit private lesson storage and signed CloudFront delivery. No custom domain required.",
+  "Parameters": {
+    "AppOrigin": {
+      "Type": "String",
+      "Default": "http://localhost:5173",
+      "AllowedPattern": "https?://[^/]+",
+      "Description": "Exact application origin for video CORS; use HTTPS for a hosted app."
+    },
+    "SigningPublicKey": {
+      "Type": "String",
+      "Description": "RSA 2048 public PEM; keep the corresponding private key on the API only."
+    },
+    "PriceClass": {
+      "Type": "String",
+      "Default": "PriceClass_100",
+      "AllowedValues": ["PriceClass_100", "PriceClass_200", "PriceClass_All"]
+    }
+  },
+  "Resources": {
+    "MediaBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedOrigins": [
+                {
+                  "Ref": "AppOrigin"
+                }
+              ],
+              "AllowedMethods": ["GET", "HEAD"],
+              "AllowedHeaders": ["Range", "If-None-Match"],
+              "ExposedHeaders": ["Content-Length", "Content-Range", "Accept-Ranges", "ETag"],
+              "MaxAge": 3600
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": "ClassOrbit"
+          }
+        ]
+      }
+    },
+    "MediaOAC": {
+      "Type": "AWS::CloudFront::OriginAccessControl",
+      "Properties": {
+        "OriginAccessControlConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-media-oac"
+          },
+          "OriginAccessControlOriginType": "s3",
+          "SigningBehavior": "always",
+          "SigningProtocol": "sigv4"
+        }
+      }
+    },
+    "SigningKey": {
+      "Type": "AWS::CloudFront::PublicKey",
+      "Properties": {
+        "PublicKeyConfig": {
+          "CallerReference": {
+            "Fn::Sub": "${AWS::StackName}-media-v1"
+          },
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-media-key"
+          },
+          "EncodedKey": {
+            "Ref": "SigningPublicKey"
+          }
+        }
+      }
+    },
+    "SigningKeyGroup": {
+      "Type": "AWS::CloudFront::KeyGroup",
+      "Properties": {
+        "KeyGroupConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-media-key-group"
+          },
+          "Items": [
+            {
+              "Ref": "SigningKey"
+            }
+          ]
+        }
+      }
+    },
+    "MediaCachePolicy": {
+      "Type": "AWS::CloudFront::CachePolicy",
+      "Properties": {
+        "CachePolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-immutable-media"
+          },
+          "DefaultTTL": 86400,
+          "MinTTL": 0,
+          "MaxTTL": 31536000,
+          "ParametersInCacheKeyAndForwardedToOrigin": {
+            "EnableAcceptEncodingGzip": true,
+            "EnableAcceptEncodingBrotli": true,
+            "HeadersConfig": {
+              "HeaderBehavior": "none"
+            },
+            "CookiesConfig": {
+              "CookieBehavior": "none"
+            },
+            "QueryStringsConfig": {
+              "QueryStringBehavior": "none"
+            }
+          }
+        }
+      }
+    },
+    "MediaOriginPolicy": {
+      "Type": "AWS::CloudFront::OriginRequestPolicy",
+      "Properties": {
+        "OriginRequestPolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-cors-preflight"
+          },
+          "HeadersConfig": {
+            "HeaderBehavior": "whitelist",
+            "Headers": ["Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"]
+          },
+          "CookiesConfig": {
+            "CookieBehavior": "none"
+          },
+          "QueryStringsConfig": {
+            "QueryStringBehavior": "none"
+          }
+        }
+      }
+    },
+    "MediaHeadersPolicy": {
+      "Type": "AWS::CloudFront::ResponseHeadersPolicy",
+      "Properties": {
+        "ResponseHeadersPolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-media-headers"
+          },
+          "CorsConfig": {
+            "AccessControlAllowOrigins": {
+              "Items": [
+                {
+                  "Ref": "AppOrigin"
+                }
+              ]
+            },
+            "AccessControlAllowMethods": {
+              "Items": ["GET", "HEAD", "OPTIONS"]
+            },
+            "AccessControlAllowHeaders": {
+              "Items": ["Range", "If-None-Match"]
+            },
+            "AccessControlExposeHeaders": {
+              "Items": ["Content-Length", "Content-Range", "Accept-Ranges", "ETag"]
+            },
+            "AccessControlAllowCredentials": true,
+            "AccessControlMaxAgeSec": 3600,
+            "OriginOverride": true
+          },
+          "SecurityHeadersConfig": {
+            "ContentTypeOptions": {
+              "Override": true
+            }
+          }
+        }
+      }
+    },
+    "MediaDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Enabled": true,
+          "Comment": "ClassOrbit private HLS media",
+          "HttpVersion": "http2and3",
+          "IPV6Enabled": true,
+          "PriceClass": {
+            "Ref": "PriceClass"
+          },
+          "ViewerCertificate": {
+            "CloudFrontDefaultCertificate": true
+          },
+          "Origins": [
+            {
+              "Id": "PrivateLessons",
+              "DomainName": {
+                "Fn::GetAtt": ["MediaBucket", "RegionalDomainName"]
+              },
+              "OriginAccessControlId": {
+                "Fn::GetAtt": ["MediaOAC", "Id"]
+              },
+              "S3OriginConfig": {
+                "OriginAccessIdentity": ""
+              }
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "PrivateLessons",
+            "ViewerProtocolPolicy": "https-only",
+            "AllowedMethods": ["GET", "HEAD", "OPTIONS"],
+            "CachedMethods": ["GET", "HEAD", "OPTIONS"],
+            "Compress": true,
+            "TrustedKeyGroups": [
+              {
+                "Ref": "SigningKeyGroup"
+              }
+            ],
+            "CachePolicyId": {
+              "Ref": "MediaCachePolicy"
+            },
+            "OriginRequestPolicyId": {
+              "Ref": "MediaOriginPolicy"
+            },
+            "ResponseHeadersPolicyId": {
+              "Ref": "MediaHeadersPolicy"
+            }
+          },
+          "CustomErrorResponses": [
+            {
+              "ErrorCode": 403,
+              "ErrorCachingMinTTL": 1
+            },
+            {
+              "ErrorCode": 404,
+              "ErrorCachingMinTTL": 1
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Application",
+            "Value": "ClassOrbit"
+          }
+        ]
+      }
+    },
+    "MediaBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "MediaBucket"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "CloudFrontOnly",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "cloudfront.amazonaws.com"
+              },
+              "Action": "s3:GetObject",
+              "Resource": {
+                "Fn::Sub": "${MediaBucket.Arn}/media/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "AWS:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${MediaDistribution}"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "RequireTLS",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": ["MediaBucket", "Arn"]
+                },
+                {
+                  "Fn::Sub": "${MediaBucket.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "S3Bucket": {
+      "Value": {
+        "Ref": "MediaBucket"
+      }
+    },
+    "CloudFrontURL": {
+      "Value": {
+        "Fn::Sub": "https://${MediaDistribution.DomainName}"
+      }
+    },
+    "CloudFrontPublicKeyId": {
+      "Value": {
+        "Ref": "SigningKey"
+      }
+    },
+    "CloudFrontDistributionId": {
+      "Value": {
+        "Ref": "MediaDistribution"
+      }
+    },
+    "AppOrigin": {
+      "Value": {
+        "Ref": "AppOrigin"
+      }
+    }
+  }
+}

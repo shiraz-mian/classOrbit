@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum VideoStatus {
+  EMPTY
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+}
+
+model User {
+  id                 String          @id @default(uuid())
+  name               String
+  email              String          @unique
+  passwordHash       String
+  role               Role            @default(STUDENT)
+  instructorApproved Boolean         @default(false)
+  createdAt          DateTime        @default(now())
+  courses            Course[]
+  enrollments        Enrollment[]
+  progress           Progress[]
+  attempts           Attempt[]
+  payments           Payment[]
+  certificates       Certificate[]
+  checkoutOrders     CheckoutOrder[]
+  messages           ChatMessage[]
+}
+
+model Course {
+  id             String          @id @default(uuid())
+  title          String
+  description    String
+  category       String
+  level          String          @default("Beginner")
+  price          Int             @default(0)
+  color          String          @default("coral")
+  status         CourseStatus    @default(DRAFT)
+  instructorId   String
+  instructor     User            @relation(fields: [instructorId], references: [id])
+  createdAt      DateTime        @default(now())
+  lessons        Lesson[]
+  enrollments    Enrollment[]
+  quizzes        Quiz[]
+  liveClasses    LiveClass[]
+  payments       Payment[]
+  certificates   Certificate[]
+  checkoutOrders CheckoutOrder[]
+}
+
+model Lesson {
+  id          String      @id @default(uuid())
+  courseId    String
+  course      Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  content     String      @default("")
+  position    Int
+  duration    Int         @default(0)
+  videoStatus VideoStatus @default(EMPTY)
+  videoPath   String?
+  sampleVideo String?
+  progress    Progress[]
+
+  @@unique([courseId, position])
+}
+
+model Enrollment {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model Progress {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  completedAt DateTime @default(now())
+
+  @@unique([userId, lessonId])
+}
+
+model Quiz {
+  id        String    @id @default(uuid())
+  courseId  String
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  passScore Int       @default(70)
+  questions Json
+  attempts  Attempt[]
+}
+
+model Attempt {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  quizId    String
+  quiz      Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  score     Int
+  passed    Boolean
+  answers   Json
+  createdAt DateTime @default(now())
+
+  @@index([userId, quizId])
+}
+
+model LiveClass {
+  id       String        @id @default(uuid())
+  courseId String
+  course   Course        @relation(fields: [courseId], references: [id])
+  title    String
+  startsAt DateTime
+  duration Int           @default(60)
+  messages ChatMessage[]
+}
+
+model ChatMessage {
+  id          String    @id @default(uuid())
+  liveClassId String
+  liveClass   LiveClass @relation(fields: [liveClassId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  text        String
+  createdAt   DateTime  @default(now())
+
+  @@index([liveClassId, createdAt])
+}
+
+model Payment {
+  id         String         @id
+  userId     String
+  user       User           @relation(fields: [userId], references: [id])
+  courseId   String
+  course     Course         @relation(fields: [courseId], references: [id])
+  amount     Int
+  currency   String         @default("inr")
+  status     String         @default("PAID")
+  provider   String
+  checkoutId String?        @unique
+  checkout   CheckoutOrder? @relation(fields: [checkoutId], references: [id])
+  createdAt  DateTime       @default(now())
+
+  @@index([courseId, createdAt])
+}
+
+model Certificate {
+  id       String   @id @default(uuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  courseId String
+  course   Course   @relation(fields: [courseId], references: [id])
+  issuedAt DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model WebhookEvent {
+  id        String   @id
+  createdAt DateTime @default(now())
+}
+
+model CheckoutOrder {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  courseId        String
+  course          Course   @relation(fields: [courseId], references: [id])
+  amount          Int
+  currency        String   @default("inr")
+  status          String   @default("CREATING")
+  providerOrderId String?  @unique
+  keyId           String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  payment         Payment?
+
+  @@index([userId, courseId, createdAt])
+}

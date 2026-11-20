@@ -1,0 +1,46 @@
+{
+  "name": "classorbit",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build --workspace client",
+    "start": "node server/src/index.js",
+    "worker": "node server/src/jobs/video.worker.js",
+    "test": "node --test --test-concurrency=1 --import ./server/tests/setup.js server/tests/*.test.js",
+    "db:generate": "prisma generate --schema server/prisma/schema.prisma",
+    "db:migrate": "prisma migrate deploy --schema server/prisma/schema.prisma",
+    "db:dev": "prisma migrate dev --schema server/prisma/schema.prisma",
+    "db:seed": "node server/prisma/seed.js",
+    "format": "prettier --write client/src server/src server/tests server/prisma/seed.js scripts infra README.md package.json client/package.json server/package.json client/vite.config.js client/index.html compose.yaml compose.media.yaml .github/workflows/ci.yml",
+    "benchmark": "node scripts/benchmark.mjs",
+    "db:check": "node scripts/check-database.mjs",
+    "db:verify": "node scripts/verify-learning-flow.mjs",
+    "db:sample": "node scripts/add-sample-course.mjs",
+    "media:up": "docker compose -f compose.media.yaml up --build -d",
+    "media:down": "docker compose -f compose.media.yaml down",
+    "media:logs": "docker compose -f compose.media.yaml logs --tail=80 worker",
+    "media:verify": "node scripts/verify-video.mjs",
+    "payments:verify": "node scripts/verify-payments.mjs",
+    "cdn:prepare": "node scripts/prepare-cdn.mjs",
+    "cdn:deploy": "node scripts/deploy-cdn.mjs",
+    "cdn:sync": "node scripts/sync-cdn.mjs",
+    "cdn:verify": "node scripts/verify-cdn.mjs"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.0",
+      "effect": "3.22.1"
+    }
+  },
+  "devDependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1172.0",
+    "@aws-sdk/client-sts": "^3.1172.0",
+    "prettier": "^3.10.1"
+  }
+}

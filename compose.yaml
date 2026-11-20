@@ -1,0 +1,89 @@
+name: classorbit
+x-app-env: &app-env
+  DEMO_MODE: 'false'
+  NODE_ENV: development
+  PORT: 4000
+  APP_URL: http://localhost:4000
+  JWT_SECRET: ${JWT_SECRET:?Copy .env.example to .env and set JWT_SECRET}
+  DATABASE_URL: postgresql://classorbit:classorbit@postgres:5432/classorbit
+  DIRECT_URL: postgresql://classorbit:classorbit@postgres:5432/classorbit
+  REDIS_URL: redis://redis:6379
+  UPLOAD_DIR: /app/uploads
+  RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+  RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+  RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-}
+  CLOUDFRONT_URL: ${CLOUDFRONT_URL:-}
+  CLOUDFRONT_KEY_PAIR_ID: ${CLOUDFRONT_KEY_PAIR_ID:-}
+  CLOUDFRONT_PRIVATE_KEY: ${CLOUDFRONT_PRIVATE_KEY:-}
+  CLOUDFRONT_AUTH_MODE: ${CLOUDFRONT_AUTH_MODE:-urls}
+  CLOUDFRONT_URL_TTL: ${CLOUDFRONT_URL_TTL:-900}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+  ICE_SERVERS_JSON: ${ICE_SERVERS_JSON:-}
+  CDN_COOKIE_DOMAIN: ${CDN_COOKIE_DOMAIN:-}
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: classorbit
+      POSTGRES_USER: classorbit
+      POSTGRES_PASSWORD: classorbit
+    ports: ['127.0.0.1:5432:5432']
+    volumes: ['postgres_data:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U classorbit -d classorbit']
+      interval: 5s
+      timeout: 5s
+      retries: 15
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports: ['127.0.0.1:6379:6379']
+    volumes: ['redis_data:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  migrate:
+    build: .
+    environment: *app-env
+    command: ['npm', 'run', 'db:migrate']
+    depends_on:
+      postgres: { condition: service_healthy }
+  api:
+    build: .
+    environment: *app-env
+    ports: ['4000:4000']
+    volumes: ['uploads:/app/uploads']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  worker:
+    build: .
+    environment: *app-env
+    command: ['npm', 'run', 'worker']
+    volumes: ['uploads:/app/uploads']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+volumes:
+  postgres_data:
+  redis_data:
+  uploads:
